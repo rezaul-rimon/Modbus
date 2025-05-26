@@ -7,64 +7,58 @@
 #define RS485_TX 14  // TX of ESP32 sends to RX of device
 
 // Modbus register addresses
-#define taeHigh_reg_addr     0x30
-#define taeLow_reg_addr      0x31
-#define activePower_reg_addr 0x1A
-#define pAvolt_reg_addr      0x14
-#define pBvolt_reg_addr      0x15
-#define pCvolt_reg_addr      0x16
-#define lABvolt_reg_addr     0x17
-#define lBCvolt_reg_addr     0x18
-#define lCAvolt_reg_addr     0x19
-#define pAcurrent_reg_addr   0x10
-#define pBcurrent_reg_addr   0x11
-#define pCcurrent_reg_addr   0x12
-#define frequency_reg_addr   0x1E
-#define powerfactor_reg_addr 0x1D
+#define tNetEnergy_reg_addr 0x3A
+#define tImpEnergy_reg_addr 0x60
+#define activePower_reg_addr 0x2A
+#define pAvolt_reg_addr 0x00
+#define pBvolt_reg_addr 0x02
+#define pCvolt_reg_addr 0x04
+#define lABvolt_reg_addr 0x08
+#define lBCvolt_reg_addr 0x0A
+#define lCAvolt_reg_addr 0x0C
+#define pAcurrent_reg_addr 0x10
+#define pBcurrent_reg_addr 0x12
+#define pCcurrent_reg_addr 0x14
+#define frequency_reg_addr 0x38
+#define powerfactor_reg_addr 0x36
 
 // Modbus data variables
-int taeHigh, taeLow, activePower;
-int pAvolt, pBvolt, pCvolt;
-int lABvolt, lBCvolt, lCAvolt;
-int pAcurrent, pBcurrent, pCcurrent;
-int frequency, powerFactor;
+float tNetEnergy, tImpEnergy, activePower;
+float pAvolt, pBvolt, pCvolt;
+float lABvolt, lBCvolt, lCAvolt;
+float pAcurrent, pBcurrent, pCcurrent;
+float frequency, powerFactor;
 
 ModbusMaster node;
 
-// Function to read one holding register
-// int readModbusData(uint16_t reg_address) {
-//   uint8_t result = node.readHoldingRegisters(reg_address, 1);
-//   if (result == node.ku8MBSuccess) {
-//     return node.getResponseBuffer(0);
-//   } else {
-//     Serial.print("Modbus error at reg ");
-//     Serial.print(reg_address, HEX);
-//     Serial.print(": code ");
-//     Serial.println(result);
-//     return -1;
-//   }
-// }
 
-int readModbusData(uint16_t reg_address, uint8_t max_retries) {
+float readModbusData(uint16_t regAddress, uint8_t maxRetries) {
   
-  vTaskDelay(pdMS_TO_TICKS(30));
-
-  int value = -1;
-  while (max_retries > 0) {  // Continue while there are retries left
-    uint8_t result = node.readHoldingRegisters(reg_address, 1);
+  vTaskDelay(pdMS_TO_TICKS(150));
+  while (maxRetries > 0) {
+    uint8_t result = node.readInputRegisters(regAddress, 2);
+    
     if (result == node.ku8MBSuccess) {
-      value = node.getResponseBuffer(0);
-      Serial.print("Trying to get data from Modbus: ");
-      Serial.print(reg_address);
-      Serial.print(": ");
-      Serial.println(value);
-      break; // Exit the loop if a valid value is read
-    }
-    max_retries--;  // Decrease the retry count
-    vTaskDelay(pdMS_TO_TICKS(60)); // Small delay between retries (100ms)
-  }
+      uint16_t lowWord = node.getResponseBuffer(0);  // LSB stored in lower register
+      uint16_t highWord = node.getResponseBuffer(1); // MSB stored in higher register
 
-  return value; // Return the value, -1 if all retries failed
+      union {
+        uint32_t intVal;
+        float floatVal;
+      } converter;
+
+      converter.intVal = ((uint32_t)highWord << 16) | lowWord;
+      return converter.floatVal; // Return value if read is successful
+    } else {
+      maxRetries--;
+      Serial.println("Modbus Read Error, Retrying...");
+      vTaskDelay(pdMS_TO_TICKS(100)); // Optionally add a delay between retries
+    }
+  }
+  
+  // If all retries failed, return NaN to indicate an error
+  Serial.println("Modbus Read Failed after retries");
+  return NAN;
 }
 
 void setup() {
@@ -80,62 +74,44 @@ void setup() {
 }
 
 void loop() {
-  // Read Modbus registers
-  // taeHigh     = readModbusData(taeHigh_reg_addr);
-  // taeLow      = readModbusData(taeLow_reg_addr);
-  // activePower = readModbusData(activePower_reg_addr);
-  // pAvolt      = readModbusData(pAvolt_reg_addr);
-  // pBvolt      = readModbusData(pBvolt_reg_addr);
-  // pCvolt      = readModbusData(pCvolt_reg_addr);
-  // lABvolt     = readModbusData(lABvolt_reg_addr);
-  // lBCvolt     = readModbusData(lBCvolt_reg_addr);
-  // lCAvolt     = readModbusData(lCAvolt_reg_addr);
-  // pAcurrent   = readModbusData(pAcurrent_reg_addr);
-  // pBcurrent   = readModbusData(pBcurrent_reg_addr);
-  // pCcurrent   = readModbusData(pCcurrent_reg_addr);
-  // frequency   = readModbusData(frequency_reg_addr);
-  // powerFactor = readModbusData(powerfactor_reg_addr);
 
-  taeHigh = readModbusData(taeHigh_reg_addr, 3);       // Retry up to 3 times
-  taeLow = readModbusData(taeLow_reg_addr, 3);         // Retry up to 3 times
+  tNetEnergy = readModbusData(tNetEnergy_reg_addr, 2);       // Retry up to 3 times
+  tImpEnergy = readModbusData(tImpEnergy_reg_addr, 2);         // Retry up to 3 times
   activePower = readModbusData(activePower_reg_addr, 2); // Retry up to 2 times
-  pAvolt = readModbusData(pAvolt_reg_addr, 1);         // Retry up to 1 times
-  pBvolt = readModbusData(pBvolt_reg_addr, 1);         // Retry up to 1 times
-  pCvolt = readModbusData(pCvolt_reg_addr, 1);         // Retry up to 2 times
-  lABvolt = readModbusData(lABvolt_reg_addr, 1);       // Retry up to 1 time
-  lBCvolt = readModbusData(lBCvolt_reg_addr, 1);       // Retry up to 1 time
-  lCAvolt = readModbusData(lCAvolt_reg_addr, 1);       // Retry up to 1 time
-  pAcurrent = readModbusData(pAcurrent_reg_addr, 1);   // Retry up to 2 times
-  pBcurrent = readModbusData(pBcurrent_reg_addr, 1);   // Retry up to 2 times
-  pCcurrent = readModbusData(pCcurrent_reg_addr, 1);   // Retry up to 2 times
-  frequency = readModbusData(frequency_reg_addr, 1);   // Retry up to 1 time
-  powerFactor = readModbusData(powerfactor_reg_addr, 1); // Retry up to 1 time
-
-  Serial.println("--------------------------------");
-  Serial.println();
-  Serial.println();
+  pAvolt = readModbusData(pAvolt_reg_addr, 2);         // Retry up to 1 times
+  pBvolt = readModbusData(pBvolt_reg_addr, 2);         // Retry up to 1 times
+  pCvolt = readModbusData(pCvolt_reg_addr, 2);         // Retry up to 2 times
+  lABvolt = readModbusData(lABvolt_reg_addr, 2);       // Retry up to 1 time
+  lBCvolt = readModbusData(lBCvolt_reg_addr, 2);       // Retry up to 1 time
+  lCAvolt = readModbusData(lCAvolt_reg_addr, 2);       // Retry up to 1 time
+  pAcurrent = readModbusData(pAcurrent_reg_addr, 2);   // Retry up to 2 times
+  pBcurrent = readModbusData(pBcurrent_reg_addr, 2);   // Retry up to 2 times
+  pCcurrent = readModbusData(pCcurrent_reg_addr, 2);   // Retry up to 2 times
+  frequency = readModbusData(frequency_reg_addr, 2);   // Retry up to 1 time
+  powerFactor = readModbusData(powerfactor_reg_addr, 2); // Retry up to 1 time
 
   // Print to Serial
   Serial.println("--------- Modbus Data ---------");
-  Serial.printf("taeHigh: %d\n", taeHigh);
-  Serial.printf("taeLow: %d\n", taeLow);
-  Serial.printf("Active Power: %d\n", activePower);
+  Serial.printf("Total Net Energy: %.2f\n", tNetEnergy);
+  Serial.printf("Total Import Energy: %.2f\n", tImpEnergy);
+  Serial.printf("Active Power: %.2f\n", activePower);
 
-  Serial.printf("Phase A Voltage: %d\n", pAvolt);
-  Serial.printf("Phase B Voltage: %d\n", pBvolt);
-  Serial.printf("Phase C Voltage: %d\n", pCvolt);
+  Serial.printf("Phase A Voltage: %.2f\n", pAvolt);
+  Serial.printf("Phase B Voltage: %.2f\n", pBvolt);
+  Serial.printf("Phase C Voltage: %.2f\n", pCvolt);
 
-  Serial.printf("Line AB Voltage: %d\n", lABvolt);
-  Serial.printf("Line BC Voltage: %d\n", lBCvolt);
-  Serial.printf("Line CA Voltage: %d\n", lCAvolt);
+  Serial.printf("Line AB Voltage: %.2f\n", lABvolt);
+  Serial.printf("Line BC Voltage: %.2f\n", lBCvolt);
+  Serial.printf("Line CA Voltage: %.2f\n", lCAvolt);
 
-  Serial.printf("Phase A Current: %d\n", pAcurrent);
-  Serial.printf("Phase B Current: %d\n", pBcurrent);
-  Serial.printf("Phase C Current: %d\n", pCcurrent);
+  Serial.printf("Phase A Current: %.2f\n", pAcurrent);
+  Serial.printf("Phase B Current: %.2f\n", pBcurrent);
+  Serial.printf("Phase C Current: %.2f\n", pCcurrent);
 
-  Serial.printf("Frequency: %d Hz\n", frequency);
-  Serial.printf("Power Factor: %d\n", powerFactor);
+  Serial.printf("Frequency: %.2f Hz\n", frequency);
+  Serial.printf("Power Factor: %.2f\n", powerFactor);
   Serial.println("--------------------------------");
+
   Serial.println();
   Serial.println();
 
