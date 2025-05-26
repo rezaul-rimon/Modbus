@@ -34,7 +34,7 @@ ModbusMaster node;
 
 float readModbusData(uint16_t regAddress, uint8_t maxRetries) {
   
-  vTaskDelay(pdMS_TO_TICKS(150));
+  delay(150);
   while (maxRetries > 0) {
     uint8_t result = node.readInputRegisters(regAddress, 2);
     
@@ -48,11 +48,12 @@ float readModbusData(uint16_t regAddress, uint8_t maxRetries) {
       } converter;
 
       converter.intVal = ((uint32_t)highWord << 16) | lowWord;
+      Serial.printf("Modbus Read Success: Reg 0x%04X, Value: %.2f\n", regAddress, converter.floatVal);
       return converter.floatVal; // Return value if read is successful
     } else {
       maxRetries--;
       Serial.println("Modbus Read Error, Retrying...");
-      vTaskDelay(pdMS_TO_TICKS(100)); // Optionally add a delay between retries
+      delay(100); // Optionally add a delay between retries
     }
   }
   
@@ -63,6 +64,8 @@ float readModbusData(uint16_t regAddress, uint8_t maxRetries) {
 
 void setup() {
   Serial.begin(115200);
+  pinMode(15, OUTPUT);
+  digitalWrite(15, LOW); // Set GPIO 15 to LOW (optional, depending on your setup)
 
   // Start Serial2 on your chosen RX/TX pins
   Serial2.begin(9600, SERIAL_8N1, RS485_RX, RS485_TX);
@@ -89,6 +92,8 @@ void loop() {
   pCcurrent = readModbusData(pCcurrent_reg_addr, 2);   // Retry up to 2 times
   frequency = readModbusData(frequency_reg_addr, 2);   // Retry up to 1 time
   powerFactor = readModbusData(powerfactor_reg_addr, 2); // Retry up to 1 time
+  Serial.println("----------- Scan Complete -------------");
+  Serial.println();
 
   // Print to Serial
   Serial.println("--------- Modbus Data ---------");
@@ -111,7 +116,6 @@ void loop() {
   Serial.printf("Frequency: %.2f Hz\n", frequency);
   Serial.printf("Power Factor: %.2f\n", powerFactor);
   Serial.println("--------------------------------");
-
   Serial.println();
   Serial.println();
 
