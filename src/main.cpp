@@ -1,6 +1,7 @@
 #include <Arduino.h>
-
 #include <ModbusMaster.h>
+
+#define DEVICE_ID "1191012505290001"
 
 // RS485 Serial2 Pins (No DE/RE control needed)
 #define RS485_RX 27  // RX of ESP32 receives from TX of device
@@ -29,21 +30,9 @@ int lABvolt, lBCvolt, lCAvolt;
 int pAcurrent, pBcurrent, pCcurrent;
 int frequency, powerFactor;
 
-ModbusMaster node;
+char em_data[128];
 
-// Function to read one holding register
-// int readModbusData(uint16_t reg_address) {
-//   uint8_t result = node.readHoldingRegisters(reg_address, 1);
-//   if (result == node.ku8MBSuccess) {
-//     return node.getResponseBuffer(0);
-//   } else {
-//     Serial.print("Modbus error at reg ");
-//     Serial.print(reg_address, HEX);
-//     Serial.print(": code ");
-//     Serial.println(result);
-//     return -1;
-//   }
-// }
+ModbusMaster node;
 
 int readModbusData(uint16_t reg_address, uint8_t max_retries) {
   
@@ -67,6 +56,27 @@ int readModbusData(uint16_t reg_address, uint8_t max_retries) {
   return value; // Return the value, -1 if all retries failed
 }
 
+void ParsingModbusData() {
+  // Format the data into the buffer with DEVICE_ID at the beginning
+  snprintf(em_data, sizeof(em_data), 
+    "%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+    DEVICE_ID,  // Add DEVICE_ID to the formatted string
+    taeHigh,
+    taeLow,
+    activePower,
+    pAvolt,
+    pBvolt,
+    pCvolt,
+    lABvolt,
+    lBCvolt,
+    lCAvolt,
+    pAcurrent,
+    pBcurrent,
+    pCcurrent,
+    frequency,
+    powerFactor);
+}
+
 void setup() {
   Serial.begin(115200);
 
@@ -80,21 +90,6 @@ void setup() {
 }
 
 void loop() {
-  // Read Modbus registers
-  // taeHigh     = readModbusData(taeHigh_reg_addr);
-  // taeLow      = readModbusData(taeLow_reg_addr);
-  // activePower = readModbusData(activePower_reg_addr);
-  // pAvolt      = readModbusData(pAvolt_reg_addr);
-  // pBvolt      = readModbusData(pBvolt_reg_addr);
-  // pCvolt      = readModbusData(pCvolt_reg_addr);
-  // lABvolt     = readModbusData(lABvolt_reg_addr);
-  // lBCvolt     = readModbusData(lBCvolt_reg_addr);
-  // lCAvolt     = readModbusData(lCAvolt_reg_addr);
-  // pAcurrent   = readModbusData(pAcurrent_reg_addr);
-  // pBcurrent   = readModbusData(pBcurrent_reg_addr);
-  // pCcurrent   = readModbusData(pCcurrent_reg_addr);
-  // frequency   = readModbusData(frequency_reg_addr);
-  // powerFactor = readModbusData(powerfactor_reg_addr);
 
   taeHigh = readModbusData(taeHigh_reg_addr, 3);       // Retry up to 3 times
   taeLow = readModbusData(taeLow_reg_addr, 3);         // Retry up to 3 times
@@ -136,6 +131,9 @@ void loop() {
   Serial.printf("Frequency: %d Hz\n", frequency);
   Serial.printf("Power Factor: %d\n", powerFactor);
   Serial.println("--------------------------------");
+
+  ParsingModbusData();  // Prepare the data for transmission
+  Serial.println(em_data);
   Serial.println();
   Serial.println();
 
